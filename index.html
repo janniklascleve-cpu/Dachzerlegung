@@ -24,31 +24,29 @@
             touch-action: none;
         }
 
-        /* Viewport ist die verschiebbare Ebene */
+        /* Die Ebene, die verschoben und gezoomt wird */
         #canvas-viewport {
             position: absolute;
             top: 0;
             left: 0;
-            width: 100%;
-            height: 100%;
             transform-origin: 0 0;
             will-change: transform;
         }
 
+        /* Der Canvas entspricht exakt den Pixeln des Bildes */
         #canvas {
-            width: 100%;
-            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
             background-repeat: no-repeat;
-            background-position: center;
-            background-size: contain;
-            position: relative;
+            background-size: 100% 100%;
         }
 
         .rect {
             position: absolute;
             border-width: 2px;
             pointer-events: none;
-            will-change: transform, width, height;
+            will-change: left, top, width, height;
         }
 
         .handle {
@@ -67,7 +65,6 @@
             pointer-events: auto;
             margin-left: -22px;
             margin-top: -22px;
-            will-change: transform;
         }
 
         .area-label {
@@ -81,20 +78,25 @@
             z-index: 20;
             pointer-events: none;
             transform-origin: left bottom;
-            will-change: transform;
         }
 
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Effekt für das "Dahinterschieben" der Teilflächen */
+        #balance-section {
+            box-shadow: 0 -15px 30px rgba(0,0,0,0.25);
+            z-index: 60;
+        }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col text-slate-900">
 
     <!-- Header -->
     <header class="bg-slate-900 text-white p-4 shadow-xl flex justify-between items-center z-50 shrink-0">
         <div class="flex items-center gap-4">
             <div class="bg-blue-600 p-2 rounded-xl shadow-lg">
-                <i data-lucide="calculator" class="w-5 h-5 text-white"></i>
+                <i data-lucide="calculator" class="w-5 h-5"></i>
             </div>
             <h1 class="text-sm font-black tracking-tight uppercase leading-none">Auf den Dächern des Süd</h1>
         </div>
@@ -124,12 +126,16 @@
             </div>
         </main>
 
-        <aside class="w-full md:w-80 bg-white border-l border-slate-200 flex flex-col shadow-2xl shrink-0 z-50 max-h-[45vh] md:max-h-none overflow-hidden text-center">
-            <div id="rect-list" class="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/10">
+        <!-- Sidebar -->
+        <aside class="w-full md:w-80 bg-white border-l border-slate-200 flex flex-col shadow-2xl shrink-0 z-50 h-full overflow-hidden">
+            <!-- Scrollbarer Teil: Teilflächen -->
+            <div id="rect-list" class="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/10 text-center">
                 <h3 class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4">Teilflächen</h3>
+                <!-- Liste wird per JS gefüllt -->
             </div>
 
-            <div class="bg-slate-900 p-6 rounded-t-[3rem] shadow-[0_-10px_40px_rgba(0,0,0,0.15)] space-y-4">
+            <!-- Fixierter Teil: Bilanz -->
+            <div id="balance-section" class="bg-slate-900 p-6 rounded-t-[3rem] space-y-4 shrink-0">
                 <div class="grid grid-cols-2 gap-3 text-left">
                     <div class="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-2xl">
                         <p class="text-[8px] font-black text-emerald-500 uppercase tracking-widest mb-1 leading-none">Addition (+)</p>
@@ -141,7 +147,7 @@
                     </div>
                 </div>
 
-                <div class="pt-4 border-t border-white/5 text-center">
+                <div class="pt-4 border-t border-white/5 text-center text-white">
                     <p class="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em] mb-2">Gesamtfläche</p>
                     <div class="flex justify-center items-baseline gap-2 mb-4">
                         <span id="total-area" class="text-5xl font-black text-white font-mono tracking-tighter drop-shadow-lg">0.00</span>
@@ -151,7 +157,7 @@
 
                 <div class="bg-white/5 rounded-2xl p-4 border border-white/5">
                     <p class="text-[8px] text-slate-500 font-bold mb-2 uppercase tracking-widest flex items-center gap-2">
-                        <span class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.6)]"></span>
+                        <span class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
                         Rechenweg
                     </p>
                     <div id="calculation-path" class="font-mono text-[10px] text-blue-200/60 overflow-x-auto whitespace-nowrap scrollbar-hide text-left italic">
@@ -168,12 +174,14 @@
             REAL_IMAGE_WIDTH_METERS: 133
         };
 
-        let rects = JSON.parse(localStorage.getItem('school_geo_html_rects')) || [];
+        // State
+        let rects = JSON.parse(localStorage.getItem('school_geo_v13_rects')) || [];
         let selectedId = null;
         let isPositiveMode = true;
-        let dynamicScale = 0;
+        let metersPerPixel = 0;
+        let imgDim = { w: 0, h: 0 };
 
-        // Viewport (Zoom/Pan)
+        // Transform
         let zoom = 1;
         let panX = 0;
         let panY = 0;
@@ -184,10 +192,9 @@
         let isResizing = false;
         let dragStartCanvasPos = { x: 0, y: 0 };
         let initialRectState = null;
-        
+        let activeTouchMode = 'none';
         let lastTouchDist = 0;
         let lastTouchMid = { x: 0, y: 0 };
-        let activeTouchMode = 'none';
 
         const canvas = document.getElementById('canvas');
         const viewport = document.getElementById('canvas-viewport');
@@ -195,73 +202,74 @@
         const drawingPreview = document.getElementById('drawing-preview');
 
         function init() {
-            canvas.style.backgroundImage = `url("${CONFIG.backgroundImage}")`;
             const img = new Image();
             img.src = CONFIG.backgroundImage;
             img.onload = () => {
-                updateScale(img);
+                imgDim = { w: img.naturalWidth, h: img.naturalHeight };
+                metersPerPixel = CONFIG.REAL_IMAGE_WIDTH_METERS / imgDim.w;
+                
+                canvas.style.backgroundImage = `url("${CONFIG.backgroundImage}")`;
+                canvas.style.width = imgDim.w + 'px';
+                canvas.style.height = imgDim.h + 'px';
+
+                // Initial zentrieren
+                const cRect = container.getBoundingClientRect();
+                const scale = Math.min(cRect.width / imgDim.w, cRect.height / imgDim.h) * 0.85;
+                zoom = scale;
+                panX = (cRect.width - imgDim.w * zoom) / 2;
+                panY = (cRect.height - imgDim.h * zoom) / 2;
+                
                 render(true);
             };
-            window.addEventListener('resize', () => { updateScale(img); render(true); });
             setupEvents();
             lucide.createIcons();
-            render(true);
         }
 
-        function updateScale(img) {
-            const containerRect = container.getBoundingClientRect();
-            const imgAspect = img.width / img.height;
-            const containerAspect = containerRect.width / containerRect.height;
-            let displayedWidth = (containerAspect > imgAspect) ? containerRect.height * imgAspect : containerRect.width;
-            if (displayedWidth > 0) dynamicScale = CONFIG.REAL_IMAGE_WIDTH_METERS / displayedWidth;
-        }
-
-        // Koordinaten-Umrechnung: Bildschirm -> Interner Bildraum
         function getCanvasPos(clientX, clientY) {
-            const rect = container.getBoundingClientRect();
+            const cRect = container.getBoundingClientRect();
             return {
-                x: (clientX - rect.left - panX) / zoom,
-                y: (clientY - rect.top - panY) / zoom
+                x: (clientX - cRect.left - panX) / zoom,
+                y: (clientY - cRect.top - panY) / zoom
             };
         }
 
         function setupEvents() {
-            document.getElementById('btn-plus').onclick = () => setMode(true);
-            document.getElementById('btn-minus').onclick = () => setMode(false);
+            document.getElementById('btn-plus').onclick = (e) => {
+                e.stopPropagation();
+                setMode(true);
+            };
+            document.getElementById('btn-minus').onclick = (e) => {
+                e.stopPropagation();
+                setMode(false);
+            };
             document.getElementById('btn-reset').onclick = () => {
                 if(confirm("Alle Flächen löschen?")) { rects = []; selectedId = null; saveAndRender(); }
             };
 
             const onStart = (e) => {
                 const isTouch = e.type.startsWith('touch');
-                const touches = isTouch ? e.touches : null;
-
-                if (isTouch && touches.length === 2) {
+                if (isTouch && e.touches.length === 2) {
                     activeTouchMode = 'navigate';
                     lastTouchDist = getTouchDist(e);
                     lastTouchMid = getTouchMidpoint(e);
                     return;
                 }
                 
-                const clientX = isTouch ? touches[0].clientX : e.clientX;
-                const clientY = isTouch ? touches[0].clientY : e.clientY;
+                const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+                const clientY = isTouch ? e.touches[0].clientY : e.clientY;
                 const pos = getCanvasPos(clientX, clientY);
-
                 activeTouchMode = 'draw';
 
                 if (selectedId) {
                     const r = rects.find(x => x.id === selectedId);
                     if (r) {
                         const hRadius = 25 / zoom; 
-                        // Müll (Top Right)
                         if (Math.abs(pos.x - (r.x + r.width)) < hRadius && Math.abs(pos.y - r.y) < hRadius) {
                             rects = rects.filter(x => x.id !== selectedId); selectedId = null; saveAndRender(); return;
                         }
-                        // Resize (Bottom Right)
                         if (Math.abs(pos.x - (r.x + r.width)) < hRadius && Math.abs(pos.y - (r.y + r.height)) < hRadius) {
                             isResizing = true; dragStartCanvasPos = pos; initialRectState = JSON.parse(JSON.stringify(r)); return;
                         }
-                        // Move (Top Left)
                         if (Math.abs(pos.x - r.x) < hRadius && Math.abs(pos.y - r.y) < hRadius) {
                             isDragging = true; dragStartCanvasPos = pos; initialRectState = JSON.parse(JSON.stringify(r)); return;
                         }
@@ -272,19 +280,18 @@
 
             const onMove = (e) => {
                 const isTouch = e.type.startsWith('touch');
-                
                 if (activeTouchMode === 'navigate' && isTouch && e.touches.length === 2) {
                     const dist = getTouchDist(e);
                     const mid = getTouchMidpoint(e);
                     const scaleChange = dist / lastTouchDist;
-                    const newZoom = Math.max(0.2, Math.min(15, zoom * scaleChange));
-                    const rect = container.getBoundingClientRect();
+                    const newZoom = Math.max(0.1, Math.min(10, zoom * scaleChange));
+                    const cRect = container.getBoundingClientRect();
                     
-                    panX = mid.x - rect.left - (mid.x - rect.left - panX) * (newZoom / zoom);
-                    panY = mid.y - rect.top - (mid.y - rect.top - panY) * (newZoom / zoom);
+                    panX = mid.x - cRect.left - (mid.x - cRect.left - panX) * (newZoom / zoom);
+                    panY = mid.y - cRect.top - (mid.y - cRect.top - panY) * (newZoom / zoom);
                     panX += (mid.x - lastTouchMid.x);
                     panY += (mid.y - lastTouchMid.y);
-
+                    
                     zoom = newZoom;
                     lastTouchDist = dist;
                     lastTouchMid = mid;
@@ -293,7 +300,6 @@
                 }
 
                 if (activeTouchMode !== 'draw') return;
-                
                 const clientX = isTouch ? e.touches[0].clientX : e.clientX;
                 const clientY = isTouch ? e.touches[0].clientY : e.clientY;
                 const pos = getCanvasPos(clientX, clientY);
@@ -322,19 +328,15 @@
                 if (activeTouchMode === 'draw' && drawingRect) {
                     const w = Math.abs(drawingRect.x2 - drawingRect.x1);
                     const h = Math.abs(drawingRect.y2 - drawingRect.y1);
-                    if (w > 8 && h > 8) {
-                        const nr = { 
-                            id: Date.now(), x: Math.min(drawingRect.x1, drawingRect.x2), y: Math.min(drawingRect.y1, drawingRect.y2), 
-                            width: w, height: h, isPositive: isPositiveMode 
-                        };
+                    if (w > 10 && h > 10) {
+                        const nr = { id: Date.now(), x: Math.min(drawingRect.x1, drawingRect.x2), y: Math.min(drawingRect.y1, drawingRect.y2), width: w, height: h, isPositive: isPositiveMode };
                         rects.push(nr); selectedId = nr.id; saveAndRender();
                     } else if (!isDragging && !isResizing) {
                         const hit = [...rects].reverse().find(r => 
                             drawingRect.startPos.x >= r.x && drawingRect.startPos.x <= r.x + r.width && 
                             drawingRect.startPos.y >= r.y && drawingRect.startPos.y <= r.y + r.height
                         );
-                        selectedId = hit ? hit.id : null; 
-                        render(true);
+                        selectedId = hit ? hit.id : null; render(true);
                     }
                 }
                 drawingRect = null; isDragging = false; isResizing = false; activeTouchMode = 'none';
@@ -345,7 +347,6 @@
             container.onmousedown = onStart;
             window.onmousemove = onMove;
             window.onmouseup = onEnd;
-
             container.ontouchstart = (e) => { if(e.touches.length === 1) e.preventDefault(); onStart(e); };
             window.ontouchmove = (e) => { if(e.touches.length === 1) e.preventDefault(); onMove(e); };
             window.ontouchend = onEnd;
@@ -353,44 +354,38 @@
             container.onwheel = (e) => {
                 e.preventDefault();
                 const delta = e.deltaY > 0 ? 0.9 : 1.1;
-                const newZoom = Math.max(0.2, Math.min(15, zoom * delta));
-                const rect = container.getBoundingClientRect();
-                panX = e.clientX - rect.left - (e.clientX - rect.left - panX) * (newZoom / zoom);
-                panY = e.clientY - rect.top - (e.clientY - rect.top - panY) * (newZoom / zoom);
+                const newZoom = Math.max(0.1, Math.min(10, zoom * delta));
+                const cRect = container.getBoundingClientRect();
+                panX = e.clientX - cRect.left - (e.clientX - cRect.left - panX) * (newZoom / zoom);
+                panY = e.clientY - cRect.top - (e.clientY - cRect.top - panY) * (newZoom / zoom);
                 zoom = newZoom;
                 render(false);
             };
         }
 
-        function getTouchDist(e) {
-            return Math.sqrt(Math.pow(e.touches[0].clientX - e.touches[1].clientX, 2) + Math.pow(e.touches[0].clientY - e.touches[1].clientY, 2));
-        }
-
-        function getTouchMidpoint(e) {
-            return { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
-        }
+        function getTouchDist(e) { return Math.sqrt(Math.pow(e.touches[0].clientX - e.touches[1].clientX, 2) + Math.pow(e.touches[0].clientY - e.touches[1].clientY, 2)); }
+        function getTouchMidpoint(e) { return { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 }; }
 
         function setMode(pos) {
-            isPositiveMode = pos; selectedId = null;
+            isPositiveMode = pos;
+            // Wir löschen selectedId NICHT mehr, damit man den Modus umschalten kann, während ein Feld aktiv ist.
             document.getElementById('btn-plus').className = pos ? 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all bg-emerald-500 text-white shadow-lg scale-105' : 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all text-slate-500 hover:text-slate-300';
             document.getElementById('btn-minus').className = !pos ? 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all bg-rose-500 text-white shadow-lg scale-105' : 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all text-slate-500 hover:text-slate-300';
-            render(true);
         }
 
         function updatePreview() {
             if (!drawingRect) return;
             drawingPreview.classList.remove('hidden');
-            const x = Math.min(drawingRect.x1, drawingRect.x2);
-            const y = Math.min(drawingRect.y1, drawingRect.y2);
-            const w = Math.abs(drawingRect.x2 - drawingRect.x1);
-            const h = Math.abs(drawingRect.y2 - drawingRect.y1);
             Object.assign(drawingPreview.style, {
-                left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px'
+                left: Math.min(drawingRect.x1, drawingRect.x2) + 'px',
+                top: Math.min(drawingRect.y1, drawingRect.y2) + 'px',
+                width: Math.abs(drawingRect.x2 - drawingRect.x1) + 'px',
+                height: Math.abs(drawingRect.y2 - drawingRect.y1) + 'px'
             });
-            drawingPreview.className = `absolute border-2 pointer-events-none z-50 ${isPositiveMode ? 'bg-emerald-500/10 border-emerald-400' : 'bg-rose-500/10 border-rose-400 border-dashed'}`;
+            drawingPreview.className = `absolute border-2 pointer-events-none z-50 ${isPositiveMode ? 'bg-emerald-500/15 border-emerald-400 shadow-xl' : 'bg-rose-500/15 border-rose-400 border-dashed shadow-xl'}`;
         }
 
-        function saveAndRender() { localStorage.setItem('school_geo_html_rects', JSON.stringify(rects)); render(true); }
+        function saveAndRender() { localStorage.setItem('school_geo_v13_rects', JSON.stringify(rects)); render(true); }
 
         function render(rebuild = false) {
             viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
@@ -404,11 +399,10 @@
             const uiScale = 1 / zoom;
 
             rects.forEach(r => {
-                const area = (r.width * dynamicScale) * (r.height * dynamicScale);
+                const area = (r.width * metersPerPixel) * (r.height * metersPerPixel);
                 if (r.isPositive) sumP += area; else sumN += area;
 
                 let div = rebuild ? null : canvas.querySelector(`[data-id="${r.id}"]`);
-                
                 if (!div) {
                     div = document.createElement('div');
                     div.setAttribute('data-id', r.id);
@@ -418,21 +412,15 @@
                 div.className = `rect ${r.isPositive ? 'border-emerald-600 bg-emerald-500/30' : 'border-rose-600 bg-rose-500/30 border-dashed'} ${selectedId === r.id ? 'ring-2 ring-blue-400 ring-offset-2 z-30 shadow-2xl' : 'z-10'}`;
                 Object.assign(div.style, { left: r.x + 'px', top: r.y + 'px', width: r.width + 'px', height: r.height + 'px' });
 
-                // Label Handling
                 let label = div.querySelector('.area-label');
                 if (!label) {
                     label = document.createElement('div');
-                    label.className = `area-label text-white border`;
                     div.appendChild(label);
                 }
                 label.className = `area-label ${r.isPositive ? 'bg-emerald-600 border-emerald-700' : 'bg-rose-600 border-rose-700'} text-white border`;
-                
-                // Wir halten die Schriftgröße visuell stabil (mind. 10px, max 16px auf Schirm)
-                const labelVisualScale = Math.max(0.4, Math.min(2.5, uiScale));
-                label.style.transform = `scale(${labelVisualScale}) translateY(-25px)`;
+                label.style.transform = `scale(${uiScale}) translateY(-25px)`;
                 label.innerText = `${r.isPositive ? '+' : '−'} ${area.toFixed(1)} m²`;
 
-                // Handles nur bei Selektion & Rebuild
                 if (selectedId === r.id && rebuild) {
                     div.appendChild(createHandle('move', 'bg-blue-500', 0, 0, uiScale));
                     div.appendChild(createHandle('trash-2', 'bg-rose-500', r.width, 0, uiScale));
@@ -462,7 +450,7 @@
 
             list.innerHTML = `<h3 class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4">Teilflächen (${rects.length})</h3>`;
             rects.forEach((r, i) => {
-                const area = (r.width * dynamicScale) * (r.height * dynamicScale);
+                const area = (r.width * metersPerPixel) * (r.height * metersPerPixel);
                 const btn = document.createElement('button');
                 btn.className = `w-full flex items-center justify-between p-3 rounded-2xl border transition-all text-[11px] mb-2 ${selectedId === r.id ? 'bg-blue-50 border-blue-200 shadow-md ring-1 ring-blue-100' : 'bg-white border-slate-100 hover:border-slate-300 shadow-sm'}`;
                 btn.onclick = () => { selectedId = r.id; render(true); };
@@ -471,7 +459,7 @@
             });
             const path = document.getElementById('calculation-path');
             if (rects.length > 0) {
-                path.innerHTML = 'A = ' + rects.map((r, i) => `<span class="${r.isPositive ? 'text-emerald-400/80' : 'text-rose-400/80'}">${r.isPositive ? (i === 0 ? '' : ' + ') : ' − '}${(r.width*dynamicScale*r.height*dynamicScale).toFixed(1)}</span>`).join('');
+                path.innerHTML = 'A = ' + rects.map((r, i) => `<span class="${r.isPositive ? 'text-emerald-400/80' : 'text-rose-400/80'}">${r.isPositive ? (i === 0 ? '' : ' + ') : ' − '}${(r.width * r.height * metersPerPixel * metersPerPixel).toFixed(1)}</span>`).join('');
             } else path.innerText = 'A = 0.00';
         }
 
