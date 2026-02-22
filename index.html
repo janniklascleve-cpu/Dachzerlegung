@@ -83,20 +83,20 @@
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
         
-        /* Effekt für das "Dahinterschieben" der Teilflächen */
+        /* Effekt für das Fixieren der Bilanz am unteren Rand */
         #balance-section {
-            box-shadow: 0 -15px 30px rgba(0,0,0,0.25);
+            box-shadow: 0 -15px 30px rgba(0,0,0,0.3);
             z-index: 60;
         }
     </style>
 </head>
-<body class="min-h-screen flex flex-col text-slate-900">
+<body class="min-h-screen h-screen flex flex-col text-slate-900">
 
     <!-- Header -->
     <header class="bg-slate-900 text-white p-4 shadow-xl flex justify-between items-center z-50 shrink-0">
         <div class="flex items-center gap-4">
             <div class="bg-blue-600 p-2 rounded-xl shadow-lg">
-                <i data-lucide="calculator" class="w-5 h-5"></i>
+                <i data-lucide="calculator" class="w-5 h-5 text-white"></i>
             </div>
             <h1 class="text-sm font-black tracking-tight uppercase leading-none">Auf den Dächern des Süd</h1>
         </div>
@@ -111,13 +111,14 @@
                 </button>
             </div>
             
-            <button id="btn-reset" class="p-2.5 bg-slate-800 text-slate-400 hover:text-rose-400 rounded-xl transition-all border border-slate-700">
+            <button id="btn-reset" class="p-2.5 bg-slate-800 text-slate-400 hover:text-rose-400 rounded-xl transition-all border border-slate-700 active:bg-rose-600 active:text-white">
                 <i data-lucide="refresh-ccw" class="w-[18px] h-[18px]"></i>
             </button>
         </div>
     </header>
 
     <div class="flex flex-1 flex-col md:flex-row overflow-hidden">
+        <!-- Canvas Bereich -->
         <main id="canvas-container">
             <div id="canvas-viewport">
                 <div id="canvas">
@@ -129,13 +130,13 @@
         <!-- Sidebar -->
         <aside class="w-full md:w-80 bg-white border-l border-slate-200 flex flex-col shadow-2xl shrink-0 z-50 h-full overflow-hidden">
             <!-- Scrollbarer Teil: Teilflächen -->
-            <div id="rect-list" class="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/10 text-center">
+            <div id="rect-list" class="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/10 text-center scrollbar-hide pb-20">
                 <h3 class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4">Teilflächen</h3>
                 <!-- Liste wird per JS gefüllt -->
             </div>
 
             <!-- Fixierter Teil: Bilanz -->
-            <div id="balance-section" class="bg-slate-900 p-6 rounded-t-[3rem] space-y-4 shrink-0">
+            <div id="balance-section" class="bg-slate-900 p-6 rounded-t-[3rem] space-y-4 shrink-0 relative">
                 <div class="grid grid-cols-2 gap-3 text-left">
                     <div class="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-2xl">
                         <p class="text-[8px] font-black text-emerald-500 uppercase tracking-widest mb-1 leading-none">Addition (+)</p>
@@ -157,7 +158,7 @@
 
                 <div class="bg-white/5 rounded-2xl p-4 border border-white/5">
                     <p class="text-[8px] text-slate-500 font-bold mb-2 uppercase tracking-widest flex items-center gap-2">
-                        <span class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
+                        <span class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.6)]"></span>
                         Rechenweg
                     </p>
                     <div id="calculation-path" class="font-mono text-[10px] text-blue-200/60 overflow-x-auto whitespace-nowrap scrollbar-hide text-left italic">
@@ -175,7 +176,7 @@
         };
 
         // State
-        let rects = JSON.parse(localStorage.getItem('school_geo_v13_rects')) || [];
+        let rects = JSON.parse(localStorage.getItem('school_geo_v14_rects')) || [];
         let selectedId = null;
         let isPositiveMode = true;
         let metersPerPixel = 0;
@@ -219,6 +220,7 @@
                 panX = (cRect.width - imgDim.w * zoom) / 2;
                 panY = (cRect.height - imgDim.h * zoom) / 2;
                 
+                setMode(isPositiveMode); // UI initialisieren
                 render(true);
             };
             setupEvents();
@@ -235,15 +237,22 @@
 
         function setupEvents() {
             document.getElementById('btn-plus').onclick = (e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 setMode(true);
             };
             document.getElementById('btn-minus').onclick = (e) => {
+                e.preventDefault();
                 e.stopPropagation();
                 setMode(false);
             };
-            document.getElementById('btn-reset').onclick = () => {
-                if(confirm("Alle Flächen löschen?")) { rects = []; selectedId = null; saveAndRender(); }
+            document.getElementById('btn-reset').onclick = (e) => {
+                e.preventDefault();
+                if(confirm("Möchtest du wirklich alle eingezeichneten Flächen löschen?")) {
+                    rects = [];
+                    selectedId = null;
+                    saveAndRender();
+                }
             };
 
             const onStart = (e) => {
@@ -264,12 +273,15 @@
                     const r = rects.find(x => x.id === selectedId);
                     if (r) {
                         const hRadius = 25 / zoom; 
+                        // Müll (Top Right)
                         if (Math.abs(pos.x - (r.x + r.width)) < hRadius && Math.abs(pos.y - r.y) < hRadius) {
                             rects = rects.filter(x => x.id !== selectedId); selectedId = null; saveAndRender(); return;
                         }
+                        // Resize (Bottom Right)
                         if (Math.abs(pos.x - (r.x + r.width)) < hRadius && Math.abs(pos.y - (r.y + r.height)) < hRadius) {
                             isResizing = true; dragStartCanvasPos = pos; initialRectState = JSON.parse(JSON.stringify(r)); return;
                         }
+                        // Move (Top Left)
                         if (Math.abs(pos.x - r.x) < hRadius && Math.abs(pos.y - r.y) < hRadius) {
                             isDragging = true; dragStartCanvasPos = pos; initialRectState = JSON.parse(JSON.stringify(r)); return;
                         }
@@ -368,7 +380,6 @@
 
         function setMode(pos) {
             isPositiveMode = pos;
-            // Wir löschen selectedId NICHT mehr, damit man den Modus umschalten kann, während ein Feld aktiv ist.
             document.getElementById('btn-plus').className = pos ? 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all bg-emerald-500 text-white shadow-lg scale-105' : 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all text-slate-500 hover:text-slate-300';
             document.getElementById('btn-minus').className = !pos ? 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all bg-rose-500 text-white shadow-lg scale-105' : 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all text-slate-500 hover:text-slate-300';
         }
@@ -385,7 +396,10 @@
             drawingPreview.className = `absolute border-2 pointer-events-none z-50 ${isPositiveMode ? 'bg-emerald-500/15 border-emerald-400 shadow-xl' : 'bg-rose-500/15 border-rose-400 border-dashed shadow-xl'}`;
         }
 
-        function saveAndRender() { localStorage.setItem('school_geo_v13_rects', JSON.stringify(rects)); render(true); }
+        function saveAndRender() { 
+            localStorage.setItem('school_geo_v14_rects', JSON.stringify(rects)); 
+            render(true); 
+        }
 
         function render(rebuild = false) {
             viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
