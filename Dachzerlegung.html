@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Auf den Dächern des Süd</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: none;
+        }
+
+        #canvas-container {
+            cursor: crosshair;
+            background-color: #e2e8f0;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #canvas {
+            width: 100%;
+            height: 100%;
+            background-repeat: no-repeat;
+            background-position: center;
+            background-size: contain;
+            position: relative;
+            touch-action: none;
+        }
+
+        .rect {
+            position: absolute;
+            border-width: 2px;
+            transition: box-shadow 0.2s;
+        }
+
+        .rect-selected {
+            ring: 4px solid #60a5fa;
+            z-index: 30 !important;
+        }
+
+        .handle {
+            position: absolute;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            z-index: 40;
+            border: 2px solid white;
+            cursor: pointer;
+        }
+
+        .area-label {
+            position: absolute;
+            top: -28px;
+            left: 0;
+            padding: 2px 8px;
+            font-size: 10px;
+            font-weight: 900;
+            border-radius: 4px;
+            white-space: nowrap;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            z-index: 20;
+        }
+
+        /* Scrollbar-Versteck für den Rechenweg */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 overflow-hidden h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-slate-900 text-white p-4 shadow-xl flex justify-between items-center z-50 shrink-0">
+        <div class="flex items-center gap-4">
+            <div class="bg-blue-600 p-2 rounded-xl shadow-lg">
+                <i data-lucide="calculator" class="w-5 h-5 text-white"></i>
+            </div>
+            <h1 class="text-sm font-black tracking-tight uppercase leading-none">Auf den Dächern des Süd</h1>
+        </div>
+
+        <div class="flex items-center gap-3">
+            <div class="flex bg-slate-800 rounded-xl p-1 border border-slate-700">
+                <button id="btn-plus" class="px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all bg-emerald-500 text-white shadow-lg scale-105">
+                    <i data-lucide="plus" class="w-4 h-4"></i> Addition (+)
+                </button>
+                <button id="btn-minus" class="px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all text-slate-500 hover:text-slate-300">
+                    <i data-lucide="minus" class="w-4 h-4"></i> Abzug (−)
+                </button>
+            </div>
+            
+            <button id="btn-reset" class="p-2.5 bg-slate-800 text-slate-400 hover:text-rose-400 rounded-xl transition-all border border-slate-700">
+                <i data-lucide="refresh-ccw" class="w-[18px] h-[18px]"></i>
+            </button>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+        <!-- Canvas Bereich -->
+        <main id="canvas-container" class="flex-1 relative">
+            <div id="canvas"></div>
+            <!-- Drawing Preview -->
+            <div id="drawing-preview" class="absolute border-2 pointer-events-none hidden z-50"></div>
+        </main>
+
+        <!-- Sidebar -->
+        <aside class="w-80 bg-white border-l border-slate-200 flex flex-col shadow-2xl shrink-0 z-50">
+            <div id="rect-list" class="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/10">
+                <h3 class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 text-center">Teilflächen</h3>
+                <!-- Liste wird per JS gefüllt -->
+            </div>
+
+            <!-- Summen-Bereich -->
+            <div class="bg-slate-900 p-6 rounded-t-[3rem] shadow-[0_-10px_40px_rgba(0,0,0,0.15)] space-y-4">
+                <div class="grid grid-cols-2 gap-3 text-left">
+                    <div class="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-2xl">
+                        <p class="text-[8px] font-black text-emerald-500 uppercase tracking-widest mb-1 leading-none">Summe Addition (+)</p>
+                        <p id="sum-plus" class="text-lg font-black text-emerald-400 font-mono">+0.0</p>
+                    </div>
+                    <div class="bg-rose-500/10 border border-rose-500/20 p-3 rounded-2xl">
+                        <p class="text-[8px] font-black text-rose-500 uppercase tracking-widest mb-1 leading-none">Summe Abzug (−)</p>
+                        <p id="sum-minus" class="text-lg font-black text-rose-400 font-mono">−0.0</p>
+                    </div>
+                </div>
+
+                <div class="pt-4 border-t border-white/5 text-center">
+                    <p class="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em] mb-2">Endergebnis Gesamtfläche</p>
+                    <div class="flex justify-center items-baseline gap-2 mb-4">
+                        <span id="total-area" class="text-5xl font-black text-white font-mono tracking-tighter drop-shadow-lg">0.00</span>
+                        <span class="text-xs font-bold text-slate-500 uppercase">m²</span>
+                    </div>
+                </div>
+
+                <div class="bg-white/5 rounded-2xl p-4 border border-white/5">
+                    <p class="text-[8px] text-slate-500 font-bold mb-2 uppercase tracking-widest flex items-center gap-2">
+                        <span class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.6)]"></span>
+                        Rechenweg
+                    </p>
+                    <div id="calculation-path" class="font-mono text-[10px] text-blue-200/60 overflow-x-auto whitespace-nowrap scrollbar-hide text-left">
+                        A = 0.00
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <script>
+        // --- KONFIGURATION ---
+        const CONFIG = {
+            backgroundImage: "https://i.postimg.cc/qBZLKnWs/Bildschirmfoto-2026-02-22-um-17-09-09.png",
+            REAL_IMAGE_WIDTH_METERS: 133
+        };
+
+        // --- STATE ---
+        let rects = JSON.parse(localStorage.getItem('school_geo_html_rects')) || [];
+        let selectedId = null;
+        let isPositiveMode = true;
+        let dynamicScale = 0;
+        let drawingRect = null;
+        let isDragging = false;
+        let isResizing = false;
+        let dragStart = { x: 0, y: 0 };
+        let initialRectState = null;
+
+        const canvas = document.getElementById('canvas');
+        const container = document.getElementById('canvas-container');
+        const drawingPreview = document.getElementById('drawing-preview');
+
+        // --- INITIALISIERUNG ---
+        function init() {
+            canvas.style.backgroundImage = `url("${CONFIG.backgroundImage}")`;
+            
+            // Maßstab berechnen
+            const img = new Image();
+            img.src = CONFIG.backgroundImage;
+            img.onload = () => {
+                updateScale(img);
+                render();
+            };
+
+            window.addEventListener('resize', () => {
+                updateScale(img);
+                render();
+            });
+
+            setupEventListeners();
+            lucide.createIcons();
+            render();
+        }
+
+        function updateScale(img) {
+            const containerRect = container.getBoundingClientRect();
+            const imgAspect = img.width / img.height;
+            const containerAspect = containerRect.width / containerRect.height;
+            
+            let displayedWidth;
+            if (containerAspect > imgAspect) {
+                displayedWidth = containerRect.height * imgAspect;
+            } else {
+                displayedWidth = containerRect.width;
+            }
+            
+            if (displayedWidth > 0) {
+                dynamicScale = CONFIG.REAL_IMAGE_WIDTH_METERS / displayedWidth;
+            }
+        }
+
+        // --- EVENT HANDLERS ---
+        function setupEventListeners() {
+            // Mode Buttons
+            document.getElementById('btn-plus').onclick = () => setMode(true);
+            document.getElementById('btn-minus').onclick = () => setMode(false);
+            document.getElementById('btn-reset').onclick = () => {
+                if(confirm("Alle Flächen löschen?")) {
+                    rects = [];
+                    selectedId = null;
+                    saveAndRender();
+                }
+            };
+
+            // Interaktion
+            const startHandler = (e) => {
+                const pos = getPos(e);
+                
+                // Handle Check
+                if (selectedId) {
+                    const r = rects.find(x => x.id === selectedId);
+                    if (r) {
+                        const hSize = 25;
+                        // Löschen (Top-Right)
+                        if (pos.x >= r.x + r.width - hSize && pos.x <= r.x + r.width + 15 && pos.y >= r.y - 15 && pos.y <= r.y + hSize) {
+                            rects = rects.filter(x => x.id !== selectedId);
+                            selectedId = null;
+                            saveAndRender();
+                            return;
+                        }
+                        // Resize (Bottom-Right)
+                        if (pos.x >= r.x + r.width - hSize && pos.x <= r.x + r.width + 15 && pos.y >= r.y + r.height - hSize && pos.y <= r.y + r.height + 15) {
+                            isResizing = true;
+                            dragStart = pos;
+                            initialRectState = {...r};
+                            return;
+                        }
+                        // Move (Top-Left)
+                        if (pos.x >= r.x - 15 && pos.x <= r.x + hSize && pos.y >= r.y - 15 && pos.y <= r.y + hSize) {
+                            isDragging = true;
+                            dragStart = pos;
+                            initialRectState = {...r};
+                            return;
+                        }
+                    }
+                }
+
+                // Drawing Start
+                drawingRect = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y, startPos: pos };
+            };
+
+            const moveHandler = (e) => {
+                const pos = getPos(e);
+                if (isResizing && selectedId) {
+                    const deltaX = pos.x - dragStart.x;
+                    const deltaY = pos.y - dragStart.y;
+                    rects = rects.map(r => r.id === selectedId ? {
+                        ...r, 
+                        width: Math.max(10, initialRectState.width + deltaX),
+                        height: Math.max(10, initialRectState.height + deltaY)
+                    } : r);
+                    render();
+                } else if (isDragging && selectedId) {
+                    const deltaX = pos.x - dragStart.x;
+                    const deltaY = pos.y - dragStart.y;
+                    rects = rects.map(r => r.id === selectedId ? {
+                        ...r, x: initialRectState.x + deltaX, y: initialRectState.y + deltaY
+                    } : r);
+                    render();
+                } else if (drawingRect) {
+                    drawingRect.x2 = pos.x;
+                    drawingRect.y2 = pos.y;
+                    updatePreview();
+                }
+            };
+
+            const endHandler = (e) => {
+                if (drawingRect) {
+                    const moveDist = Math.sqrt(Math.pow(drawingRect.x2 - drawingRect.startPos.x, 2) + Math.pow(drawingRect.y2 - drawingRect.startPos.y, 2));
+                    const w = Math.abs(drawingRect.x2 - drawingRect.x1);
+                    const h = Math.abs(drawingRect.y2 - drawingRect.y1);
+
+                    if (moveDist > 10 && w > 10 && h > 10) {
+                        const newRect = {
+                            id: Date.now(),
+                            x: Math.min(drawingRect.x1, drawingRect.x2),
+                            y: Math.min(drawingRect.y1, drawingRect.y2),
+                            width: w,
+                            height: h,
+                            isPositive: isPositiveMode
+                        };
+                        rects.push(newRect);
+                        selectedId = newRect.id;
+                        saveAndRender();
+                    } else {
+                        // Just a click
+                        const rectAt = findRectAtPos(drawingRect.startPos);
+                        selectedId = rectAt ? rectAt.id : null;
+                        render();
+                    }
+                }
+                drawingRect = null;
+                isDragging = false;
+                isResizing = false;
+                drawingPreview.classList.add('hidden');
+            };
+
+            canvas.onmousedown = startHandler;
+            window.onmousemove = moveHandler;
+            window.onmouseup = endHandler;
+
+            canvas.ontouchstart = (e) => { e.preventDefault(); startHandler(e); };
+            window.ontouchmove = (e) => { moveHandler(e); };
+            window.ontouchend = (e) => { endHandler(e); };
+        }
+
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: clientX - rect.left, y: clientY - rect.top };
+        }
+
+        function findRectAtPos(pos) {
+            return [...rects].reverse().find(r => 
+                pos.x >= r.x && pos.x <= r.x + r.width && pos.y >= r.y && pos.y <= r.y + r.height
+            );
+        }
+
+        function setMode(pos) {
+            isPositiveMode = pos;
+            selectedId = null;
+            document.getElementById('btn-plus').className = pos 
+                ? 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all bg-emerald-500 text-white shadow-lg scale-105'
+                : 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all text-slate-500 hover:text-slate-300';
+            document.getElementById('btn-minus').className = !pos 
+                ? 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all bg-rose-500 text-white shadow-lg scale-105'
+                : 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all text-slate-500 hover:text-slate-300';
+        }
+
+        // --- RENDER LOGIK ---
+        function updatePreview() {
+            if (!drawingRect) return;
+            drawingPreview.classList.remove('hidden');
+            const x = Math.min(drawingRect.x1, drawingRect.x2);
+            const y = Math.min(drawingRect.y1, drawingRect.y2);
+            const w = Math.abs(drawingRect.x2 - drawingRect.x1);
+            const h = Math.abs(drawingRect.y2 - drawingRect.y1);
+            
+            drawingPreview.style.left = x + 'px';
+            drawingPreview.style.top = y + 'px';
+            drawingPreview.style.width = w + 'px';
+            drawingPreview.style.height = h + 'px';
+            drawingPreview.className = `absolute border-2 pointer-events-none z-50 ${isPositiveMode ? 'bg-emerald-500/10 border-emerald-400' : 'bg-rose-500/10 border-rose-400 border-dashed'}`;
+        }
+
+        function saveAndRender() {
+            localStorage.setItem('school_geo_html_rects', JSON.stringify(rects));
+            render();
+        }
+
+        function render() {
+            // 1. Canvas aufräumen (außer Preview)
+            const elements = canvas.querySelectorAll('.rect, .handle');
+            elements.forEach(el => el.remove());
+
+            let sumP = 0;
+            let sumN = 0;
+
+            rects.forEach(r => {
+                const area = (r.width * dynamicScale) * (r.height * dynamicScale);
+                if (r.isPositive) sumP += area; else sumN += area;
+
+                const div = document.createElement('div');
+                div.className = `rect ${r.isPositive ? 'border-emerald-600 bg-emerald-500/30' : 'border-rose-600 bg-rose-500/30 border-dashed'} ${selectedId === r.id ? 'ring-2 ring-blue-400 ring-offset-2 z-30' : 'z-10'}`;
+                div.style.left = r.x + 'px';
+                div.style.top = r.y + 'px';
+                div.style.width = r.width + 'px';
+                div.style.height = r.height + 'px';
+
+                // Label
+                const label = document.createElement('div');
+                label.className = `area-label ${r.isPositive ? 'bg-emerald-600 border-emerald-700' : 'bg-rose-600 border-rose-700'} text-white border`;
+                label.innerText = `${r.isPositive ? '+' : '−'} ${area.toFixed(1)} m²`;
+                div.appendChild(label);
+
+                // Handles
+                if (selectedId === r.id) {
+                    const moveH = createHandle('move', 'bg-blue-500', -18, -18);
+                    const delH = createHandle('trash-2', 'bg-rose-500', r.width - 18, -18);
+                    const resH = createHandle('maximize-2', 'bg-blue-500', r.width - 18, r.height - 18);
+                    div.appendChild(moveH);
+                    div.appendChild(delH);
+                    div.appendChild(resH);
+                }
+
+                canvas.appendChild(div);
+            });
+
+            // Icons initialisieren
+            lucide.createIcons();
+
+            // 2. Sidebar & Summen
+            updateSidebar(sumP, sumN);
+        }
+
+        function createHandle(icon, color, x, y) {
+            const h = document.createElement('div');
+            h.className = `handle ${color}`;
+            h.style.left = x + 'px';
+            h.style.top = y + 'px';
+            h.innerHTML = `<i data-lucide="${icon}" style="width: 16px; height: 16px"></i>`;
+            return h;
+        }
+
+        function updateSidebar(sumP, sumN) {
+            document.getElementById('sum-plus').innerText = `+${sumP.toFixed(1)}`;
+            document.getElementById('sum-minus').innerText = `−${sumN.toFixed(1)}`;
+            document.getElementById('total-area').innerText = (sumP - sumN).toFixed(2);
+
+            const list = document.getElementById('rect-list');
+            list.innerHTML = `<h3 class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 text-center">Teilflächen (${rects.length})</h3>`;
+            
+            rects.forEach((r, i) => {
+                const area = (r.width * dynamicScale) * (r.height * dynamicScale);
+                const btn = document.createElement('button');
+                btn.className = `w-full flex items-center justify-between p-3 rounded-2xl border transition-all text-[11px] mb-2 ${selectedId === r.id ? 'bg-blue-50 border-blue-200 shadow-md ring-1 ring-blue-100' : 'bg-white border-slate-100 hover:border-slate-300 shadow-sm'}`;
+                btn.onclick = (e) => { selectedId = r.id; render(); };
+                
+                btn.innerHTML = `
+                    <div class="flex items-center gap-3 text-left">
+                        <div class="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] text-white font-black shrink-0 ${r.isPositive ? 'bg-emerald-500' : 'bg-rose-500'}">
+                            ${i + 1}
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="text-[9px] text-slate-400 font-bold uppercase leading-none mb-1">${r.isPositive ? 'Addition' : 'Abzug'}</span>
+                            <span class="font-mono font-bold text-slate-700">${r.isPositive ? '+' : '−'} ${area.toFixed(1)} m²</span>
+                        </div>
+                    </div>
+                `;
+                list.appendChild(btn);
+            });
+
+            // Rechenweg
+            const path = document.getElementById('calculation-path');
+            if (rects.length > 0) {
+                path.innerHTML = 'A = ' + rects.map((r, i) => {
+                    const area = (r.width * dynamicScale) * (r.height * dynamicScale);
+                    return `<span class="${r.isPositive ? 'text-emerald-400/80' : 'text-rose-400/80'}">${r.isPositive ? (i === 0 ? '' : ' + ') : ' − '}${area.toFixed(1)}</span>`;
+                }).join('');
+            } else {
+                path.innerText = 'A = 0.00';
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
