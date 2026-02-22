@@ -12,6 +12,8 @@
         body {
             font-family: 'Inter', sans-serif;
             touch-action: none;
+            overflow: hidden;
+            background-color: #f1f5f9;
         }
 
         #canvas-container {
@@ -19,12 +21,16 @@
             position: relative;
             overflow: hidden;
             flex: 1;
+            touch-action: none;
         }
 
+        /* Viewport ist die verschiebbare Ebene */
         #canvas-viewport {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
-            position: absolute;
             transform-origin: 0 0;
             will-change: transform;
         }
@@ -41,49 +47,48 @@
         .rect {
             position: absolute;
             border-width: 2px;
-            transition: box-shadow 0.2s;
+            pointer-events: none;
+            will-change: transform, width, height;
         }
 
         .handle {
             position: absolute;
-            width: 36px;
-            height: 36px;
-            border-radius: 8px;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-            z-index: 40;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 100;
             border: 2px solid white;
             cursor: pointer;
-            transform-origin: center;
+            pointer-events: auto;
+            margin-left: -22px;
+            margin-top: -22px;
+            will-change: transform;
         }
 
         .area-label {
             position: absolute;
-            top: -28px;
-            left: 0;
-            padding: 2px 8px;
-            font-size: 10px;
+            padding: 4px 10px;
+            font-size: 14px;
             font-weight: 900;
-            border-radius: 4px;
+            border-radius: 6px;
             white-space: nowrap;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
             z-index: 20;
+            pointer-events: none;
             transform-origin: left bottom;
+            will-change: transform;
         }
 
-        .scrollbar-hide::-webkit-scrollbar {
-            display: none;
-        }
-        .scrollbar-hide {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
-<body class="bg-slate-50 overflow-x-hidden min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col">
 
     <!-- Header -->
     <header class="bg-slate-900 text-white p-4 shadow-xl flex justify-between items-center z-50 shrink-0">
@@ -111,36 +116,33 @@
     </header>
 
     <div class="flex flex-1 flex-col md:flex-row overflow-hidden">
-        <!-- Canvas Bereich -->
         <main id="canvas-container">
             <div id="canvas-viewport">
-                <div id="canvas"></div>
-                <!-- Drawing Preview -->
-                <div id="drawing-preview" class="absolute border-2 pointer-events-none hidden z-50"></div>
+                <div id="canvas">
+                    <div id="drawing-preview" class="absolute border-2 pointer-events-none hidden z-50"></div>
+                </div>
             </div>
         </main>
 
-        <!-- Sidebar -->
-        <aside class="w-full md:w-80 bg-white border-l border-slate-200 flex flex-col shadow-2xl shrink-0 z-50 max-h-screen md:max-h-none overflow-hidden">
-            <div id="rect-list" class="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/10 text-center">
-                <h3 class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 text-center">Teilflächen</h3>
+        <aside class="w-full md:w-80 bg-white border-l border-slate-200 flex flex-col shadow-2xl shrink-0 z-50 max-h-[45vh] md:max-h-none overflow-hidden text-center">
+            <div id="rect-list" class="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/10">
+                <h3 class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4">Teilflächen</h3>
             </div>
 
-            <!-- Summen-Bereich -->
             <div class="bg-slate-900 p-6 rounded-t-[3rem] shadow-[0_-10px_40px_rgba(0,0,0,0.15)] space-y-4">
                 <div class="grid grid-cols-2 gap-3 text-left">
                     <div class="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-2xl">
-                        <p class="text-[8px] font-black text-emerald-500 uppercase tracking-widest mb-1 leading-none">Summe Addition (+)</p>
+                        <p class="text-[8px] font-black text-emerald-500 uppercase tracking-widest mb-1 leading-none">Addition (+)</p>
                         <p id="sum-plus" class="text-lg font-black text-emerald-400 font-mono">+0.0</p>
                     </div>
                     <div class="bg-rose-500/10 border border-rose-500/20 p-3 rounded-2xl">
-                        <p class="text-[8px] font-black text-rose-500 uppercase tracking-widest mb-1 leading-none">Summe Abzug (−)</p>
+                        <p class="text-[8px] font-black text-rose-500 uppercase tracking-widest mb-1 leading-none">Abzug (−)</p>
                         <p id="sum-minus" class="text-lg font-black text-rose-400 font-mono">−0.0</p>
                     </div>
                 </div>
 
                 <div class="pt-4 border-t border-white/5 text-center">
-                    <p class="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em] mb-2">Endergebnis Gesamtfläche</p>
+                    <p class="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em] mb-2">Gesamtfläche</p>
                     <div class="flex justify-center items-baseline gap-2 mb-4">
                         <span id="total-area" class="text-5xl font-black text-white font-mono tracking-tighter drop-shadow-lg">0.00</span>
                         <span class="text-xs font-bold text-slate-500 uppercase">m²</span>
@@ -152,7 +154,7 @@
                         <span class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.6)]"></span>
                         Rechenweg
                     </p>
-                    <div id="calculation-path" class="font-mono text-[10px] text-blue-200/60 overflow-x-auto whitespace-nowrap scrollbar-hide text-left">
+                    <div id="calculation-path" class="font-mono text-[10px] text-blue-200/60 overflow-x-auto whitespace-nowrap scrollbar-hide text-left italic">
                         A = 0.00
                     </div>
                 </div>
@@ -161,262 +163,218 @@
     </div>
 
     <script>
-        // --- KONFIGURATION ---
         const CONFIG = {
             backgroundImage: "https://i.postimg.cc/qBZLKnWs/Bildschirmfoto-2026-02-22-um-17-09-09.png",
             REAL_IMAGE_WIDTH_METERS: 133
         };
 
-        // --- STATE ---
         let rects = JSON.parse(localStorage.getItem('school_geo_html_rects')) || [];
         let selectedId = null;
         let isPositiveMode = true;
         let dynamicScale = 0;
-        let drawingRect = null;
-        
-        // Transform State (Zoom/Pan)
+
+        // Viewport (Zoom/Pan)
         let zoom = 1;
         let panX = 0;
         let panY = 0;
 
-        // Interaction State
+        // Interaction
+        let drawingRect = null;
         let isDragging = false;
         let isResizing = false;
-        let dragStart = { x: 0, y: 0 };
+        let dragStartCanvasPos = { x: 0, y: 0 };
         let initialRectState = null;
         
-        // Touch State
-        let initialTouchDist = 0;
-        let initialZoom = 1;
-        let initialPan = { x: 0, y: 0 };
-        let touchMode = 'none'; // 'draw', 'pan-zoom'
+        let lastTouchDist = 0;
+        let lastTouchMid = { x: 0, y: 0 };
+        let activeTouchMode = 'none';
 
         const canvas = document.getElementById('canvas');
         const viewport = document.getElementById('canvas-viewport');
         const container = document.getElementById('canvas-container');
         const drawingPreview = document.getElementById('drawing-preview');
 
-        // --- INITIALISIERUNG ---
         function init() {
             canvas.style.backgroundImage = `url("${CONFIG.backgroundImage}")`;
-            
             const img = new Image();
             img.src = CONFIG.backgroundImage;
             img.onload = () => {
                 updateScale(img);
-                render();
+                render(true);
             };
-
-            window.addEventListener('resize', () => {
-                updateScale(img);
-                render();
-            });
-
-            setupEventListeners();
+            window.addEventListener('resize', () => { updateScale(img); render(true); });
+            setupEvents();
             lucide.createIcons();
-            render();
+            render(true);
         }
 
         function updateScale(img) {
             const containerRect = container.getBoundingClientRect();
             const imgAspect = img.width / img.height;
             const containerAspect = containerRect.width / containerRect.height;
-            
-            let displayedWidth;
-            if (containerAspect > imgAspect) {
-                displayedWidth = containerRect.height * imgAspect;
-            } else {
-                displayedWidth = containerRect.width;
-            }
-            
-            if (displayedWidth > 0) {
-                dynamicScale = CONFIG.REAL_IMAGE_WIDTH_METERS / displayedWidth;
-            }
+            let displayedWidth = (containerAspect > imgAspect) ? containerRect.height * imgAspect : containerRect.width;
+            if (displayedWidth > 0) dynamicScale = CONFIG.REAL_IMAGE_WIDTH_METERS / displayedWidth;
         }
 
-        // --- EVENT HANDLERS ---
-        function setupEventListeners() {
+        // Koordinaten-Umrechnung: Bildschirm -> Interner Bildraum
+        function getCanvasPos(clientX, clientY) {
+            const rect = container.getBoundingClientRect();
+            return {
+                x: (clientX - rect.left - panX) / zoom,
+                y: (clientY - rect.top - panY) / zoom
+            };
+        }
+
+        function setupEvents() {
             document.getElementById('btn-plus').onclick = () => setMode(true);
             document.getElementById('btn-minus').onclick = () => setMode(false);
             document.getElementById('btn-reset').onclick = () => {
-                if(confirm("Alle Flächen löschen?")) {
-                    rects = [];
-                    selectedId = null;
-                    saveAndRender();
-                }
+                if(confirm("Alle Flächen löschen?")) { rects = []; selectedId = null; saveAndRender(); }
             };
 
-            const startHandler = (e) => {
-                if (e.touches && e.touches.length === 2) {
-                    touchMode = 'pan-zoom';
-                    initialTouchDist = getTouchDist(e);
-                    initialZoom = zoom;
-                    initialPan = { x: panX, y: panY };
+            const onStart = (e) => {
+                const isTouch = e.type.startsWith('touch');
+                const touches = isTouch ? e.touches : null;
+
+                if (isTouch && touches.length === 2) {
+                    activeTouchMode = 'navigate';
+                    lastTouchDist = getTouchDist(e);
+                    lastTouchMid = getTouchMidpoint(e);
                     return;
                 }
+                
+                const clientX = isTouch ? touches[0].clientX : e.clientX;
+                const clientY = isTouch ? touches[0].clientY : e.clientY;
+                const pos = getCanvasPos(clientX, clientY);
 
-                if (e.touches && e.touches.length > 2) return;
-                
-                touchMode = 'draw';
-                const pos = getPos(e);
-                
+                activeTouchMode = 'draw';
+
                 if (selectedId) {
                     const r = rects.find(x => x.id === selectedId);
                     if (r) {
-                        const hSize = 30 / zoom; // Größerer Klickbereich im Zoom
-                        if (pos.x >= r.x + r.width - hSize && pos.x <= r.x + r.width + hSize && pos.y >= r.y - hSize && pos.y <= r.y + hSize) {
-                            rects = rects.filter(x => x.id !== selectedId);
-                            selectedId = null;
-                            saveAndRender();
-                            return;
+                        const hRadius = 25 / zoom; 
+                        // Müll (Top Right)
+                        if (Math.abs(pos.x - (r.x + r.width)) < hRadius && Math.abs(pos.y - r.y) < hRadius) {
+                            rects = rects.filter(x => x.id !== selectedId); selectedId = null; saveAndRender(); return;
                         }
-                        if (pos.x >= r.x + r.width - hSize && pos.x <= r.x + r.width + hSize && pos.y >= r.y + r.height - hSize && pos.y <= r.y + r.height + hSize) {
-                            isResizing = true;
-                            dragStart = pos;
-                            initialRectState = {...r};
-                            return;
+                        // Resize (Bottom Right)
+                        if (Math.abs(pos.x - (r.x + r.width)) < hRadius && Math.abs(pos.y - (r.y + r.height)) < hRadius) {
+                            isResizing = true; dragStartCanvasPos = pos; initialRectState = JSON.parse(JSON.stringify(r)); return;
                         }
-                        if (pos.x >= r.x - hSize && pos.x <= r.x + hSize && pos.y >= r.y - hSize && pos.y <= r.y + hSize) {
-                            isDragging = true;
-                            dragStart = pos;
-                            initialRectState = {...r};
-                            return;
+                        // Move (Top Left)
+                        if (Math.abs(pos.x - r.x) < hRadius && Math.abs(pos.y - r.y) < hRadius) {
+                            isDragging = true; dragStartCanvasPos = pos; initialRectState = JSON.parse(JSON.stringify(r)); return;
                         }
                     }
                 }
-
                 drawingRect = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y, startPos: pos };
             };
 
-            const moveHandler = (e) => {
-                if (touchMode === 'pan-zoom' && e.touches && e.touches.length === 2) {
-                    const currentDist = getTouchDist(e);
-                    const factor = currentDist / initialTouchDist;
-                    zoom = Math.max(0.5, Math.min(5, initialZoom * factor));
-                    render();
+            const onMove = (e) => {
+                const isTouch = e.type.startsWith('touch');
+                
+                if (activeTouchMode === 'navigate' && isTouch && e.touches.length === 2) {
+                    const dist = getTouchDist(e);
+                    const mid = getTouchMidpoint(e);
+                    const scaleChange = dist / lastTouchDist;
+                    const newZoom = Math.max(0.2, Math.min(15, zoom * scaleChange));
+                    const rect = container.getBoundingClientRect();
+                    
+                    panX = mid.x - rect.left - (mid.x - rect.left - panX) * (newZoom / zoom);
+                    panY = mid.y - rect.top - (mid.y - rect.top - panY) * (newZoom / zoom);
+                    panX += (mid.x - lastTouchMid.x);
+                    panY += (mid.y - lastTouchMid.y);
+
+                    zoom = newZoom;
+                    lastTouchDist = dist;
+                    lastTouchMid = mid;
+                    requestAnimationFrame(() => render(false));
                     return;
                 }
 
-                if (touchMode !== 'draw') return;
-
-                const pos = getPos(e);
+                if (activeTouchMode !== 'draw') return;
+                
+                const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+                const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+                const pos = getCanvasPos(clientX, clientY);
+                
                 if (isResizing && selectedId) {
-                    const deltaX = pos.x - dragStart.x;
-                    const deltaY = pos.y - dragStart.y;
-                    rects = rects.map(r => r.id === selectedId ? {
-                        ...r, 
-                        width: Math.max(5, initialRectState.width + deltaX),
-                        height: Math.max(5, initialRectState.height + deltaY)
+                    const dx = pos.x - dragStartCanvasPos.x; 
+                    const dy = pos.y - dragStartCanvasPos.y;
+                    rects = rects.map(r => r.id === selectedId ? { 
+                        ...r, width: Math.max(5, initialRectState.width + dx), height: Math.max(5, initialRectState.height + dy) 
                     } : r);
-                    render();
+                    requestAnimationFrame(() => render(false));
                 } else if (isDragging && selectedId) {
-                    const deltaX = pos.x - dragStart.x;
-                    const deltaY = pos.y - dragStart.y;
-                    rects = rects.map(r => r.id === selectedId ? {
-                        ...r, x: initialRectState.x + deltaX, y: initialRectState.y + deltaY
+                    const dx = pos.x - dragStartCanvasPos.x; 
+                    const dy = pos.y - dragStartCanvasPos.y;
+                    rects = rects.map(r => r.id === selectedId ? { 
+                        ...r, x: initialRectState.x + dx, y: initialRectState.y + dy 
                     } : r);
-                    render();
+                    requestAnimationFrame(() => render(false));
                 } else if (drawingRect) {
-                    drawingRect.x2 = pos.x;
-                    drawingRect.y2 = pos.y;
+                    drawingRect.x2 = pos.x; drawingRect.y2 = pos.y;
                     updatePreview();
                 }
             };
 
-            const endHandler = (e) => {
-                if (touchMode === 'draw' && drawingRect) {
-                    const moveDist = Math.sqrt(Math.pow(drawingRect.x2 - drawingRect.startPos.x, 2) + Math.pow(drawingRect.y2 - drawingRect.startPos.y, 2));
+            const onEnd = (e) => {
+                if (activeTouchMode === 'draw' && drawingRect) {
                     const w = Math.abs(drawingRect.x2 - drawingRect.x1);
                     const h = Math.abs(drawingRect.y2 - drawingRect.y1);
-
-                    if (moveDist > 10 && w > 5 && h > 5) {
-                        const newRect = {
-                            id: Date.now(),
-                            x: Math.min(drawingRect.x1, drawingRect.x2),
-                            y: Math.min(drawingRect.y1, drawingRect.y2),
-                            width: w,
-                            height: h,
-                            isPositive: isPositiveMode
+                    if (w > 8 && h > 8) {
+                        const nr = { 
+                            id: Date.now(), x: Math.min(drawingRect.x1, drawingRect.x2), y: Math.min(drawingRect.y1, drawingRect.y2), 
+                            width: w, height: h, isPositive: isPositiveMode 
                         };
-                        rects.push(newRect);
-                        selectedId = newRect.id;
-                        saveAndRender();
-                    } else {
-                        const rectAt = findRectAtPos(drawingRect.startPos);
-                        selectedId = rectAt ? rectAt.id : null;
-                        render();
+                        rects.push(nr); selectedId = nr.id; saveAndRender();
+                    } else if (!isDragging && !isResizing) {
+                        const hit = [...rects].reverse().find(r => 
+                            drawingRect.startPos.x >= r.x && drawingRect.startPos.x <= r.x + r.width && 
+                            drawingRect.startPos.y >= r.y && drawingRect.startPos.y <= r.y + r.height
+                        );
+                        selectedId = hit ? hit.id : null; 
+                        render(true);
                     }
                 }
-                drawingRect = null;
-                isDragging = false;
-                isResizing = false;
-                touchMode = 'none';
+                drawingRect = null; isDragging = false; isResizing = false; activeTouchMode = 'none';
                 drawingPreview.classList.add('hidden');
+                if (selectedId) render(true); 
             };
 
-            canvas.onmousedown = startHandler;
-            window.onmousemove = moveHandler;
-            window.onmouseup = endHandler;
+            container.onmousedown = onStart;
+            window.onmousemove = onMove;
+            window.onmouseup = onEnd;
 
-            container.ontouchstart = (e) => { startHandler(e); };
-            window.ontouchmove = (e) => { moveHandler(e); };
-            window.ontouchend = (e) => { endHandler(e); };
-            
-            // Mouse Wheel Zoom
+            container.ontouchstart = (e) => { if(e.touches.length === 1) e.preventDefault(); onStart(e); };
+            window.ontouchmove = (e) => { if(e.touches.length === 1) e.preventDefault(); onMove(e); };
+            window.ontouchend = onEnd;
+
             container.onwheel = (e) => {
                 e.preventDefault();
                 const delta = e.deltaY > 0 ? 0.9 : 1.1;
-                zoom = Math.max(0.5, Math.min(5, zoom * delta));
-                render();
+                const newZoom = Math.max(0.2, Math.min(15, zoom * delta));
+                const rect = container.getBoundingClientRect();
+                panX = e.clientX - rect.left - (e.clientX - rect.left - panX) * (newZoom / zoom);
+                panY = e.clientY - rect.top - (e.clientY - rect.top - panY) * (newZoom / zoom);
+                zoom = newZoom;
+                render(false);
             };
         }
 
         function getTouchDist(e) {
-            return Math.sqrt(
-                Math.pow(e.touches[0].clientX - e.touches[1].clientX, 2) +
-                Math.pow(e.touches[0].clientY - e.touches[1].clientY, 2)
-            );
+            return Math.sqrt(Math.pow(e.touches[0].clientX - e.touches[1].clientX, 2) + Math.pow(e.touches[0].clientY - e.touches[1].clientY, 2));
         }
 
-        function getPos(e) {
-            const rect = container.getBoundingClientRect();
-            let clientX, clientY;
-            if (e.touches && e.touches.length > 0) {
-                clientX = e.touches[0].clientX;
-                clientY = e.touches[0].clientY;
-            } else if (e.changedTouches && e.changedTouches.length > 0) {
-                clientX = e.changedTouches[0].clientX;
-                clientY = e.changedTouches[0].clientY;
-            } else {
-                clientX = e.clientX;
-                clientY = e.clientY;
-            }
-            
-            // Umrechnung von Bildschirm-Pixeln in Canvas-Pixel (unter Berücksichtigung des Zooms)
-            const localX = clientX - rect.left;
-            const localY = clientY - rect.top;
-            
-            return { 
-                x: (localX - panX) / zoom, 
-                y: (localY - panY) / zoom 
-            };
-        }
-
-        function findRectAtPos(pos) {
-            return [...rects].reverse().find(r => 
-                pos.x >= r.x && pos.x <= r.x + r.width && pos.y >= r.y && pos.y <= r.y + r.height
-            );
+        function getTouchMidpoint(e) {
+            return { x: (e.touches[0].clientX + e.touches[1].clientX) / 2, y: (e.touches[0].clientY + e.touches[1].clientY) / 2 };
         }
 
         function setMode(pos) {
-            isPositiveMode = pos;
-            selectedId = null;
-            document.getElementById('btn-plus').className = pos 
-                ? 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all bg-emerald-500 text-white shadow-lg scale-105'
-                : 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all text-slate-500 hover:text-slate-300';
-            document.getElementById('btn-minus').className = !pos 
-                ? 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all bg-rose-500 text-white shadow-lg scale-105'
-                : 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all text-slate-500 hover:text-slate-300';
+            isPositiveMode = pos; selectedId = null;
+            document.getElementById('btn-plus').className = pos ? 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all bg-emerald-500 text-white shadow-lg scale-105' : 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all text-slate-500 hover:text-slate-300';
+            document.getElementById('btn-minus').className = !pos ? 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all bg-rose-500 text-white shadow-lg scale-105' : 'px-6 py-2 rounded-lg flex items-center gap-2 text-xs font-bold transition-all text-slate-500 hover:text-slate-300';
+            render(true);
         }
 
         function updatePreview() {
@@ -426,70 +384,71 @@
             const y = Math.min(drawingRect.y1, drawingRect.y2);
             const w = Math.abs(drawingRect.x2 - drawingRect.x1);
             const h = Math.abs(drawingRect.y2 - drawingRect.y1);
-            
-            drawingPreview.style.left = x + 'px';
-            drawingPreview.style.top = y + 'px';
-            drawingPreview.style.width = w + 'px';
-            drawingPreview.style.height = h + 'px';
+            Object.assign(drawingPreview.style, {
+                left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px'
+            });
             drawingPreview.className = `absolute border-2 pointer-events-none z-50 ${isPositiveMode ? 'bg-emerald-500/10 border-emerald-400' : 'bg-rose-500/10 border-rose-400 border-dashed'}`;
         }
 
-        function saveAndRender() {
-            localStorage.setItem('school_geo_html_rects', JSON.stringify(rects));
-            render();
-        }
+        function saveAndRender() { localStorage.setItem('school_geo_html_rects', JSON.stringify(rects)); render(true); }
 
-        function render() {
-            // Viewport transformieren
+        function render(rebuild = false) {
             viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+            
+            if (rebuild) {
+                const elements = canvas.querySelectorAll('.rect, .handle');
+                elements.forEach(el => el.remove());
+            }
 
-            const elements = canvas.querySelectorAll('.rect, .handle');
-            elements.forEach(el => el.remove());
-
-            let sumP = 0;
-            let sumN = 0;
+            let sumP = 0, sumN = 0;
+            const uiScale = 1 / zoom;
 
             rects.forEach(r => {
                 const area = (r.width * dynamicScale) * (r.height * dynamicScale);
                 if (r.isPositive) sumP += area; else sumN += area;
 
-                const div = document.createElement('div');
-                div.className = `rect ${r.isPositive ? 'border-emerald-600 bg-emerald-500/30' : 'border-rose-600 bg-rose-500/30 border-dashed'} ${selectedId === r.id ? 'ring-2 ring-blue-400 ring-offset-2 z-30' : 'z-10'}`;
-                div.style.left = r.x + 'px';
-                div.style.top = r.y + 'px';
-                div.style.width = r.width + 'px';
-                div.style.height = r.height + 'px';
-
-                // Label mit inversem Zoom, damit es lesbar bleibt
-                const label = document.createElement('div');
-                label.className = `area-label ${r.isPositive ? 'bg-emerald-600 border-emerald-700' : 'bg-rose-600 border-rose-700'} text-white border`;
-                label.style.transform = `scale(${1/zoom})`;
-                label.innerText = `${r.isPositive ? '+' : '−'} ${area.toFixed(1)} m²`;
-                div.appendChild(label);
-
-                if (selectedId === r.id) {
-                    const handleOffset = 18 / zoom;
-                    div.appendChild(createHandle('move', 'bg-blue-500', -18 / zoom, -18 / zoom));
-                    div.appendChild(createHandle('trash-2', 'bg-rose-500', r.width - 18 / zoom, -18 / zoom));
-                    div.appendChild(createHandle('maximize-2', 'bg-blue-500', r.width - 18 / zoom, r.height - 18 / zoom));
+                let div = rebuild ? null : canvas.querySelector(`[data-id="${r.id}"]`);
+                
+                if (!div) {
+                    div = document.createElement('div');
+                    div.setAttribute('data-id', r.id);
+                    canvas.appendChild(div);
                 }
 
-                canvas.appendChild(div);
+                div.className = `rect ${r.isPositive ? 'border-emerald-600 bg-emerald-500/30' : 'border-rose-600 bg-rose-500/30 border-dashed'} ${selectedId === r.id ? 'ring-2 ring-blue-400 ring-offset-2 z-30 shadow-2xl' : 'z-10'}`;
+                Object.assign(div.style, { left: r.x + 'px', top: r.y + 'px', width: r.width + 'px', height: r.height + 'px' });
+
+                // Label Handling
+                let label = div.querySelector('.area-label');
+                if (!label) {
+                    label = document.createElement('div');
+                    label.className = `area-label text-white border`;
+                    div.appendChild(label);
+                }
+                label.className = `area-label ${r.isPositive ? 'bg-emerald-600 border-emerald-700' : 'bg-rose-600 border-rose-700'} text-white border`;
+                
+                // Wir halten die Schriftgröße visuell stabil (mind. 10px, max 16px auf Schirm)
+                const labelVisualScale = Math.max(0.4, Math.min(2.5, uiScale));
+                label.style.transform = `scale(${labelVisualScale}) translateY(-25px)`;
+                label.innerText = `${r.isPositive ? '+' : '−'} ${area.toFixed(1)} m²`;
+
+                // Handles nur bei Selektion & Rebuild
+                if (selectedId === r.id && rebuild) {
+                    div.appendChild(createHandle('move', 'bg-blue-500', 0, 0, uiScale));
+                    div.appendChild(createHandle('trash-2', 'bg-rose-500', r.width, 0, uiScale));
+                    div.appendChild(createHandle('maximize-2', 'bg-blue-500', r.width, r.height, uiScale));
+                    lucide.createIcons();
+                }
             });
 
-            lucide.createIcons();
             updateSidebar(sumP, sumN);
         }
 
-        function createHandle(icon, color, x, y) {
+        function createHandle(icon, color, x, y, hScale) {
             const h = document.createElement('div');
             h.className = `handle ${color}`;
-            h.style.left = x + 'px';
-            h.style.top = y + 'px';
-            h.style.width = (36 / zoom) + 'px';
-            h.style.height = (36 / zoom) + 'px';
-            h.style.borderRadius = (8 / zoom) + 'px';
-            h.innerHTML = `<i data-lucide="${icon}" style="width: ${16 / zoom}px; height: ${16 / zoom}px"></i>`;
+            Object.assign(h.style, { left: x + 'px', top: y + 'px', transform: `scale(${hScale})` });
+            h.innerHTML = `<i data-lucide="${icon}" style="width: 22px; height: 22px"></i>`;
             return h;
         }
 
@@ -497,39 +456,23 @@
             document.getElementById('sum-plus').innerText = `+${sumP.toFixed(1)}`;
             document.getElementById('sum-minus').innerText = `−${sumN.toFixed(1)}`;
             document.getElementById('total-area').innerText = (sumP - sumN).toFixed(2);
-
             const list = document.getElementById('rect-list');
-            list.innerHTML = `<h3 class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 text-center">Teilflächen (${rects.length})</h3>`;
             
+            if (drawingRect || isDragging || isResizing) return; 
+
+            list.innerHTML = `<h3 class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4">Teilflächen (${rects.length})</h3>`;
             rects.forEach((r, i) => {
                 const area = (r.width * dynamicScale) * (r.height * dynamicScale);
                 const btn = document.createElement('button');
                 btn.className = `w-full flex items-center justify-between p-3 rounded-2xl border transition-all text-[11px] mb-2 ${selectedId === r.id ? 'bg-blue-50 border-blue-200 shadow-md ring-1 ring-blue-100' : 'bg-white border-slate-100 hover:border-slate-300 shadow-sm'}`;
-                btn.onclick = (e) => { selectedId = r.id; render(); };
-                
-                btn.innerHTML = `
-                    <div class="flex items-center gap-3 text-left">
-                        <div class="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] text-white font-black shrink-0 ${r.isPositive ? 'bg-emerald-500' : 'bg-rose-500'}">
-                            ${i + 1}
-                        </div>
-                        <div class="flex flex-col">
-                            <span class="text-[9px] text-slate-400 font-bold uppercase leading-none mb-1">${r.isPositive ? 'Addition' : 'Abzug'}</span>
-                            <span class="font-mono font-bold text-slate-700">${r.isPositive ? '+' : '−'} ${area.toFixed(1)} m²</span>
-                        </div>
-                    </div>
-                `;
+                btn.onclick = () => { selectedId = r.id; render(true); };
+                btn.innerHTML = `<div class="flex items-center gap-3 text-left"><div class="w-6 h-6 rounded-lg flex items-center justify-center text-[10px] text-white font-black shrink-0 ${r.isPositive ? 'bg-emerald-500' : 'bg-rose-500'}">${i + 1}</div><div class="flex flex-col"><span class="text-[9px] text-slate-400 font-bold uppercase leading-none mb-1 text-left">${r.isPositive ? 'Addition' : 'Abzug'}</span><span class="font-mono font-bold text-slate-700 text-left">${r.isPositive ? '+' : '−'} ${area.toFixed(1)} m²</span></div></div>`;
                 list.appendChild(btn);
             });
-
             const path = document.getElementById('calculation-path');
             if (rects.length > 0) {
-                path.innerHTML = 'A = ' + rects.map((r, i) => {
-                    const area = (r.width * dynamicScale) * (r.height * dynamicScale);
-                    return `<span class="${r.isPositive ? 'text-emerald-400/80' : 'text-rose-400/80'}">${r.isPositive ? (i === 0 ? '' : ' + ') : ' − '}${area.toFixed(1)}</span>`;
-                }).join('');
-            } else {
-                path.innerText = 'A = 0.00';
-            }
+                path.innerHTML = 'A = ' + rects.map((r, i) => `<span class="${r.isPositive ? 'text-emerald-400/80' : 'text-rose-400/80'}">${r.isPositive ? (i === 0 ? '' : ' + ') : ' − '}${(r.width*dynamicScale*r.height*dynamicScale).toFixed(1)}</span>`).join('');
+            } else path.innerText = 'A = 0.00';
         }
 
         init();
