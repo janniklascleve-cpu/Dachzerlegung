@@ -15,10 +15,18 @@
         }
 
         #canvas-container {
-            cursor: crosshair;
-            background-color: #e2e8f0;
+            background-color: #cbd5e1;
             position: relative;
             overflow: hidden;
+            flex: 1;
+        }
+
+        #canvas-viewport {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            transform-origin: 0 0;
+            will-change: transform;
         }
 
         #canvas {
@@ -28,18 +36,12 @@
             background-position: center;
             background-size: contain;
             position: relative;
-            touch-action: none;
         }
 
         .rect {
             position: absolute;
             border-width: 2px;
             transition: box-shadow 0.2s;
-        }
-
-        .rect-selected {
-            ring: 4px solid #60a5fa;
-            z-index: 30 !important;
         }
 
         .handle {
@@ -55,6 +57,7 @@
             z-index: 40;
             border: 2px solid white;
             cursor: pointer;
+            transform-origin: center;
         }
 
         .area-label {
@@ -68,6 +71,7 @@
             white-space: nowrap;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
             z-index: 20;
+            transform-origin: left bottom;
         }
 
         .scrollbar-hide::-webkit-scrollbar {
@@ -79,7 +83,7 @@
         }
     </style>
 </head>
-<body class="bg-slate-50 overflow-hidden h-screen flex flex-col">
+<body class="bg-slate-50 overflow-x-hidden min-h-screen flex flex-col">
 
     <!-- Header -->
     <header class="bg-slate-900 text-white p-4 shadow-xl flex justify-between items-center z-50 shrink-0">
@@ -106,17 +110,23 @@
         </div>
     </header>
 
-    <div class="flex flex-1 overflow-hidden">
-        <main id="canvas-container" class="flex-1 relative">
-            <div id="canvas"></div>
-            <div id="drawing-preview" class="absolute border-2 pointer-events-none hidden z-50"></div>
+    <div class="flex flex-1 flex-col md:flex-row overflow-hidden">
+        <!-- Canvas Bereich -->
+        <main id="canvas-container">
+            <div id="canvas-viewport">
+                <div id="canvas"></div>
+                <!-- Drawing Preview -->
+                <div id="drawing-preview" class="absolute border-2 pointer-events-none hidden z-50"></div>
+            </div>
         </main>
 
-        <aside class="w-80 bg-white border-l border-slate-200 flex flex-col shadow-2xl shrink-0 z-50">
+        <!-- Sidebar -->
+        <aside class="w-full md:w-80 bg-white border-l border-slate-200 flex flex-col shadow-2xl shrink-0 z-50 max-h-screen md:max-h-none overflow-hidden">
             <div id="rect-list" class="flex-1 overflow-y-auto p-4 space-y-2 bg-slate-50/10 text-center">
-                <h3 class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4">Teilflächen</h3>
+                <h3 class="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] mb-4 text-center">Teilflächen</h3>
             </div>
 
+            <!-- Summen-Bereich -->
             <div class="bg-slate-900 p-6 rounded-t-[3rem] shadow-[0_-10px_40px_rgba(0,0,0,0.15)] space-y-4">
                 <div class="grid grid-cols-2 gap-3 text-left">
                     <div class="bg-emerald-500/10 border border-emerald-500/20 p-3 rounded-2xl">
@@ -151,25 +161,42 @@
     </div>
 
     <script>
+        // --- KONFIGURATION ---
         const CONFIG = {
             backgroundImage: "https://i.postimg.cc/qBZLKnWs/Bildschirmfoto-2026-02-22-um-17-09-09.png",
             REAL_IMAGE_WIDTH_METERS: 133
         };
 
+        // --- STATE ---
         let rects = JSON.parse(localStorage.getItem('school_geo_html_rects')) || [];
         let selectedId = null;
         let isPositiveMode = true;
         let dynamicScale = 0;
         let drawingRect = null;
+        
+        // Transform State (Zoom/Pan)
+        let zoom = 1;
+        let panX = 0;
+        let panY = 0;
+
+        // Interaction State
         let isDragging = false;
         let isResizing = false;
         let dragStart = { x: 0, y: 0 };
         let initialRectState = null;
+        
+        // Touch State
+        let initialTouchDist = 0;
+        let initialZoom = 1;
+        let initialPan = { x: 0, y: 0 };
+        let touchMode = 'none'; // 'draw', 'pan-zoom'
 
         const canvas = document.getElementById('canvas');
+        const viewport = document.getElementById('canvas-viewport');
         const container = document.getElementById('canvas-container');
         const drawingPreview = document.getElementById('drawing-preview');
 
+        // --- INITIALISIERUNG ---
         function init() {
             canvas.style.backgroundImage = `url("${CONFIG.backgroundImage}")`;
             
@@ -207,6 +234,7 @@
             }
         }
 
+        // --- EVENT HANDLERS ---
         function setupEventListeners() {
             document.getElementById('btn-plus').onclick = () => setMode(true);
             document.getElementById('btn-minus').onclick = () => setMode(false);
@@ -219,25 +247,36 @@
             };
 
             const startHandler = (e) => {
+                if (e.touches && e.touches.length === 2) {
+                    touchMode = 'pan-zoom';
+                    initialTouchDist = getTouchDist(e);
+                    initialZoom = zoom;
+                    initialPan = { x: panX, y: panY };
+                    return;
+                }
+
+                if (e.touches && e.touches.length > 2) return;
+                
+                touchMode = 'draw';
                 const pos = getPos(e);
                 
                 if (selectedId) {
                     const r = rects.find(x => x.id === selectedId);
                     if (r) {
-                        const hSize = 25;
-                        if (pos.x >= r.x + r.width - hSize && pos.x <= r.x + r.width + 15 && pos.y >= r.y - 15 && pos.y <= r.y + hSize) {
+                        const hSize = 30 / zoom; // Größerer Klickbereich im Zoom
+                        if (pos.x >= r.x + r.width - hSize && pos.x <= r.x + r.width + hSize && pos.y >= r.y - hSize && pos.y <= r.y + hSize) {
                             rects = rects.filter(x => x.id !== selectedId);
                             selectedId = null;
                             saveAndRender();
                             return;
                         }
-                        if (pos.x >= r.x + r.width - hSize && pos.x <= r.x + r.width + 15 && pos.y >= r.y + r.height - hSize && pos.y <= r.y + r.height + 15) {
+                        if (pos.x >= r.x + r.width - hSize && pos.x <= r.x + r.width + hSize && pos.y >= r.y + r.height - hSize && pos.y <= r.y + r.height + hSize) {
                             isResizing = true;
                             dragStart = pos;
                             initialRectState = {...r};
                             return;
                         }
-                        if (pos.x >= r.x - 15 && pos.x <= r.x + hSize && pos.y >= r.y - 15 && pos.y <= r.y + hSize) {
+                        if (pos.x >= r.x - hSize && pos.x <= r.x + hSize && pos.y >= r.y - hSize && pos.y <= r.y + hSize) {
                             isDragging = true;
                             dragStart = pos;
                             initialRectState = {...r};
@@ -245,18 +284,29 @@
                         }
                     }
                 }
+
                 drawingRect = { x1: pos.x, y1: pos.y, x2: pos.x, y2: pos.y, startPos: pos };
             };
 
             const moveHandler = (e) => {
+                if (touchMode === 'pan-zoom' && e.touches && e.touches.length === 2) {
+                    const currentDist = getTouchDist(e);
+                    const factor = currentDist / initialTouchDist;
+                    zoom = Math.max(0.5, Math.min(5, initialZoom * factor));
+                    render();
+                    return;
+                }
+
+                if (touchMode !== 'draw') return;
+
                 const pos = getPos(e);
                 if (isResizing && selectedId) {
                     const deltaX = pos.x - dragStart.x;
                     const deltaY = pos.y - dragStart.y;
                     rects = rects.map(r => r.id === selectedId ? {
                         ...r, 
-                        width: Math.max(10, initialRectState.width + deltaX),
-                        height: Math.max(10, initialRectState.height + deltaY)
+                        width: Math.max(5, initialRectState.width + deltaX),
+                        height: Math.max(5, initialRectState.height + deltaY)
                     } : r);
                     render();
                 } else if (isDragging && selectedId) {
@@ -274,12 +324,12 @@
             };
 
             const endHandler = (e) => {
-                if (drawingRect) {
+                if (touchMode === 'draw' && drawingRect) {
                     const moveDist = Math.sqrt(Math.pow(drawingRect.x2 - drawingRect.startPos.x, 2) + Math.pow(drawingRect.y2 - drawingRect.startPos.y, 2));
                     const w = Math.abs(drawingRect.x2 - drawingRect.x1);
                     const h = Math.abs(drawingRect.y2 - drawingRect.y1);
 
-                    if (moveDist > 10 && w > 10 && h > 10) {
+                    if (moveDist > 10 && w > 5 && h > 5) {
                         const newRect = {
                             id: Date.now(),
                             x: Math.min(drawingRect.x1, drawingRect.x2),
@@ -300,6 +350,7 @@
                 drawingRect = null;
                 isDragging = false;
                 isResizing = false;
+                touchMode = 'none';
                 drawingPreview.classList.add('hidden');
             };
 
@@ -307,16 +358,48 @@
             window.onmousemove = moveHandler;
             window.onmouseup = endHandler;
 
-            canvas.ontouchstart = (e) => { e.preventDefault(); startHandler(e); };
+            container.ontouchstart = (e) => { startHandler(e); };
             window.ontouchmove = (e) => { moveHandler(e); };
             window.ontouchend = (e) => { endHandler(e); };
+            
+            // Mouse Wheel Zoom
+            container.onwheel = (e) => {
+                e.preventDefault();
+                const delta = e.deltaY > 0 ? 0.9 : 1.1;
+                zoom = Math.max(0.5, Math.min(5, zoom * delta));
+                render();
+            };
+        }
+
+        function getTouchDist(e) {
+            return Math.sqrt(
+                Math.pow(e.touches[0].clientX - e.touches[1].clientX, 2) +
+                Math.pow(e.touches[0].clientY - e.touches[1].clientY, 2)
+            );
         }
 
         function getPos(e) {
-            const rect = canvas.getBoundingClientRect();
-            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-            return { x: clientX - rect.left, y: clientY - rect.top };
+            const rect = container.getBoundingClientRect();
+            let clientX, clientY;
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else if (e.changedTouches && e.changedTouches.length > 0) {
+                clientX = e.changedTouches[0].clientX;
+                clientY = e.changedTouches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            
+            // Umrechnung von Bildschirm-Pixeln in Canvas-Pixel (unter Berücksichtigung des Zooms)
+            const localX = clientX - rect.left;
+            const localY = clientY - rect.top;
+            
+            return { 
+                x: (localX - panX) / zoom, 
+                y: (localY - panY) / zoom 
+            };
         }
 
         function findRectAtPos(pos) {
@@ -357,6 +440,9 @@
         }
 
         function render() {
+            // Viewport transformieren
+            viewport.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+
             const elements = canvas.querySelectorAll('.rect, .handle');
             elements.forEach(el => el.remove());
 
@@ -374,15 +460,18 @@
                 div.style.width = r.width + 'px';
                 div.style.height = r.height + 'px';
 
+                // Label mit inversem Zoom, damit es lesbar bleibt
                 const label = document.createElement('div');
                 label.className = `area-label ${r.isPositive ? 'bg-emerald-600 border-emerald-700' : 'bg-rose-600 border-rose-700'} text-white border`;
+                label.style.transform = `scale(${1/zoom})`;
                 label.innerText = `${r.isPositive ? '+' : '−'} ${area.toFixed(1)} m²`;
                 div.appendChild(label);
 
                 if (selectedId === r.id) {
-                    div.appendChild(createHandle('move', 'bg-blue-500', -18, -18));
-                    div.appendChild(createHandle('trash-2', 'bg-rose-500', r.width - 18, -18));
-                    div.appendChild(createHandle('maximize-2', 'bg-blue-500', r.width - 18, r.height - 18));
+                    const handleOffset = 18 / zoom;
+                    div.appendChild(createHandle('move', 'bg-blue-500', -18 / zoom, -18 / zoom));
+                    div.appendChild(createHandle('trash-2', 'bg-rose-500', r.width - 18 / zoom, -18 / zoom));
+                    div.appendChild(createHandle('maximize-2', 'bg-blue-500', r.width - 18 / zoom, r.height - 18 / zoom));
                 }
 
                 canvas.appendChild(div);
@@ -397,7 +486,10 @@
             h.className = `handle ${color}`;
             h.style.left = x + 'px';
             h.style.top = y + 'px';
-            h.innerHTML = `<i data-lucide="${icon}" style="width: 16px; height: 16px"></i>`;
+            h.style.width = (36 / zoom) + 'px';
+            h.style.height = (36 / zoom) + 'px';
+            h.style.borderRadius = (8 / zoom) + 'px';
+            h.innerHTML = `<i data-lucide="${icon}" style="width: ${16 / zoom}px; height: ${16 / zoom}px"></i>`;
             return h;
         }
 
